@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deutsche Exonyme – Weltkarte</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=IM+Fell+DW+Pica:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    :root {
+      --ink:    #1c1410;
+      --parch:  #f5edd6;
+      --gold:   #b8892a;
+      --red:    #8b2020;
+      --border: #a0865a;
+      --blue:   #1a3a5c;
+      --green:  #2a5c3a;
+      --purple: #4a2060;
+      --teal:   #1a5c50;
+      --orange: #7a3a10;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--parch);
+      color: var(--ink);
+      font-family: 'IM Fell DW Pica', Georgia, serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      position: relative;
+      z-index: 1000;
+      background: var(--ink);
+      border-bottom: 3px solid var(--gold);
+      padding: 8px 22px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1rem, 2.2vw, 1.5rem);
+      color: var(--parch);
+      letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    header h1 span { color: var(--gold); }
+    header p {
+      font-size: .78rem;
+      color: #c8b98a;
+      font-style: italic;
+    }
+
+    /* Filter bar */
+    #filters {
+      margin-left: auto;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-btn {
+      font-family: 'IM Fell DW Pica', serif;
+      font-size: .72rem;
+      padding: 3px 9px;
+      border: 1px solid;
+      border-radius: 2px;
+      cursor: pointer;
+      background: transparent;
+      color: var(--parch);
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .filter-btn:hover, .filter-btn.active { color: var(--ink); }
+    .filter-btn[data-region="all"]           { border-color: var(--gold);   }
+    .filter-btn[data-region="all"].active    { background: var(--gold); }
+    .filter-btn[data-region="ostpreussen"]   { border-color: #6ab0e0; }
+    .filter-btn[data-region="ostpreussen"].active { background: #6ab0e0; }
+    .filter-btn[data-region="schlesien"]     { border-color: #80c080; }
+    .filter-btn[data-region="schlesien"].active   { background: #80c080; }
+    .filter-btn[data-region="pommern"]       { border-color: #c080c0; }
+    .filter-btn[data-region="pommern"].active     { background: #c080c0; }
+    .filter-btn[data-region="posen"]         { border-color: #e0a040; }
+    .filter-btn[data-region="posen"].active       { background: #e0a040; }
+    .filter-btn[data-region="sudetenland"]   { border-color: #e06060; }
+    .filter-btn[data-region="sudetenland"].active { background: #e06060; }
+    .filter-btn[data-region="elsass"]        { border-color: #60c0c0; }
+    .filter-btn[data-region="elsass"].active      { background: #60c0c0; }
+    .filter-btn[data-region="suedtirol"]     { border-color: #c0a060; }
+    .filter-btn[data-region="suedtirol"].active   { background: #c0a060; }
+    .filter-btn[data-region="baltikum"]      { border-color: #a0a0e0; }
+    .filter-btn[data-region="baltikum"].active    { background: #a0a0e0; }
+    .filter-btn[data-region="siebenb"]       { border-color: #e08060; }
+    .filter-btn[data-region="siebenb"].active     { background: #e08060; }
+    .filter-btn[data-region="world"]         { border-color: #90c090; }
+    .filter-btn[data-region="world"].active       { background: #90c090; }
+
+    #map { flex: 1; background: #c8dde8; }
+    .leaflet-tile { filter: sepia(.45) brightness(.97) contrast(.9); }
+
+    /* Labels */
+    .exonym-label {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+    .exonym-label .inner {
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+      text-shadow:
+         1px  1px 0 var(--parch),
+        -1px -1px 0 var(--parch),
+         1px -1px 0 var(--parch),
+        -1px  1px 0 var(--parch);
+      white-space: nowrap;
+      cursor: pointer;
+      letter-spacing: .03em;
+    }
+    .exonym-label .inner:hover { opacity: .7; }
+
+    /* Size classes */
+    .sz-lg  .inner { font-size: 13px; }
+    .sz-md  .inner { font-size: 11px; }
+    .sz-sm  .inner { font-size: 9px; }
+
+    /* Region colours */
+    .r-ostpreussen .inner { color: #1a6090; }
+    .r-schlesien   .inner { color: #1a6030; }
+    .r-pommern     .inner { color: #702090; }
+    .r-posen       .inner { color: #904010; }
+    .r-sudetenland .inner { color: #901010; }
+    .r-elsass      .inner { color: #106060; }
+    .r-suedtirol   .inner { color: #705010; }
+    .r-baltikum    .inner { color: #202090; }
+    .r-siebenb     .inner { color: #904020; }
+    .r-world       .inner { color: #8b2020; }
+
+    /* Popup */
+    .leaflet-popup-content-wrapper {
+      background: var(--parch) !important;
+      border: 2px solid var(--border) !important;
+      border-radius: 2px !important;
+      box-shadow: 4px 4px 14px rgba(0,0,0,.35) !important;
+      padding: 0 !important;
+    }
+    .leaflet-popup-tip { background: var(--border) !important; }
+    .leaflet-popup-content { margin: 0 !important; }
+    .popup-body { padding: 12px 16px 10px; min-width: 170px; }
+    .popup-body .de {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem; font-weight: 700;
+      letter-spacing: .03em;
+    }
+    .popup-body .region-tag {
+      font-size: .65rem; color: #999;
+      text-transform: uppercase; letter-spacing: .06em;
+      margin-bottom: 4px;
+    }
+    .popup-body .arrow { font-size: .72rem; color: var(--border); font-style: italic; margin: 3px 0; }
+    .popup-body .local { font-size: .98rem; color: var(--ink); font-style: italic; }
+    .popup-body .lang  { font-size: .68rem; color: #888; margin-top: 2px; }
+
+    /* Legend */
+    #legend {
+      position: absolute;
+      bottom: 28px; left: 14px;
+      z-index: 900;
+      background: rgba(28,20,16,.88);
+      color: var(--parch);
+      font-size: .68rem;
+      padding: 8px 12px;
+      border: 1px solid var(--gold);
+      border-radius: 2px;
+      line-height: 1.8;
+      pointer-events: none;
+    }
+    #legend strong { color: var(--gold); font-family: 'Playfair Display', serif; display: block; margin-bottom: 2px; }
+    .leg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+
+    #count-badge {
+      position: absolute;
+      top: 70px; right: 14px;
+      z-index: 900;
+      background: rgba(28,20,16,.82);
+      color: var(--gold);
+      font-family: 'Playfair Display', serif;
+      font-size: .75rem;
+      padding: 4px 10px;
+      border: 1px solid var(--gold);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Deutsche <span>Exonyme</span> – Weltkarte</h1>
+    <p>Klicke auf einen Namen für den heutigen offiziellen Ortsnamen</p>
+  </div>
+  <div id="filters">
+    <button class="filter-btn active" data-region="all">Alle</button>
+    <button class="filter-btn" data-region="ostpreussen">Ostpreußen</button>
+    <button class="filter-btn" data-region="schlesien">Schlesien</button>
+    <button class="filter-btn" data-region="pommern">Pommern</button>
+    <button class="filter-btn" data-region="posen">Posen</button>
+    <button class="filter-btn" data-region="sudetenland">Sudetenland</button>
+    <button class="filter-btn" data-region="elsass">Elsass/Lothringen</button>
+    <button class="filter-btn" data-region="suedtirol">Südtirol</button>
+    <button class="filter-btn" data-region="baltikum">Baltikum</button>
+    <button class="filter-btn" data-region="siebenb">Siebenbürgen</button>
+    <button class="filter-btn" data-region="world">Welt</button>
+  </div>
+</header>
+
+<div id="map"></div>
+
+<div id="legend">
+  <strong>Regionen</strong>
+  <div><span class="leg-dot" style="background:#1a6090"></span>Ostpreußen</div>
+  <div><span class="leg-dot" style="background:#1a6030"></span>Schlesien</div>
+  <div><span class="leg-dot" style="background:#702090"></span>Pommern</div>
+  <div><span class="leg-dot" style="background:#904010"></span>Posen</div>
+  <div><span class="leg-dot" style="background:#901010"></span>Sudetenland</div>
+  <div><span class="leg-dot" style="background:#106060"></span>Elsass/Lothringen</div>
+  <div><span class="leg-dot" style="background:#705010"></span>Südtirol</div>
+  <div><span class="leg-dot" style="background:#202090"></span>Baltikum</div>
+  <div><span class="leg-dot" style="background:#904020"></span>Siebenbürgen</div>
+  <div><span class="leg-dot" style="background:#8b2020"></span>Welt</div>
+</div>
+<div id="count-badge">— Orte</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA FORMAT: [german, local, language, lat, lng, region, size]
+// region: ostpreussen | schlesien | pommern | posen | sudetenland |
+//         elsass | suedtirol | baltikum | siebenb | world
+// size: lg | md | sm
+// ═══════════════════════════════════════════════════════════════════════════
+
+const places = [
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  OSTPREUSSEN (East Prussia → now Poland & Russia)   ║
+// ╚══════════════════════════════════════════════════════╝
+["Königsberg",      "Калининград (Kaliningrad)", "Russisch",        54.707, 20.508, "ostpreussen", "lg"],
+["Danzig",          "Gdańsk",                   "Polnisch",        54.352, 18.646, "ostpreussen", "lg"],
+["Elbing",          "Elbląg",                   "Polnisch",        54.156, 19.403, "ostpreussen", "md"],
+["Memel",           "Klaipėda",                 "Litauisch",       55.706, 21.144, "ostpreussen", "md"],
+["Allenstein",      "Olsztyn",                  "Polnisch",        53.778, 20.480, "ostpreussen", "md"],
+["Tilsit",          "Советск (Sovetsk)",         "Russisch",        55.085, 21.883, "ostpreussen", "md"],
+["Insterburg",      "Черняховск (Tschernjachowsk)","Russisch",      54.635, 21.812, "ostpreussen", "md"],
+["Gumbinnen",       "Гусев (Gussev)",            "Russisch",        54.603, 22.190, "ostpreussen", "sm"],
+["Lyck",            "Ełk",                       "Polnisch",        53.830, 22.353, "ostpreussen", "sm"],
+["Rastenburg",      "Kętrzyn",                   "Polnisch",        54.077, 21.372, "ostpreussen", "sm"],
+["Heilsberg",       "Lidzbark Warmiński",         "Polnisch",        54.129, 20.581, "ostpreussen", "sm"],
+["Braunsberg",      "Braniewo",                  "Polnisch",        54.380, 19.826, "ostpreussen", "sm"],
+["Frauenburg",      "Frombork",                  "Polnisch",        54.362, 19.679, "ostpreussen", "sm"],
+["Preußisch Eylau", "Bagrationovsk",             "Russisch",        54.393, 20.641, "ostpreussen", "sm"],
+["Pillau",          "Балтийск (Baltijsk)",        "Russisch",        54.651, 19.921, "ostpreussen", "sm"],
+["Wehlau",          "Знаменск (Snamensk)",        "Russisch",        54.637, 21.236, "ostpreussen", "sm"],
+["Goldap",          "Gołdap",                    "Polnisch",        54.310, 22.304, "ostpreussen", "sm"],
+["Angerburg",       "Węgorzewo",                 "Polnisch",        54.217, 21.743, "ostpreussen", "sm"],
+["Sensburg",        "Mrągowo",                   "Polnisch",        53.866, 21.303, "ostpreussen", "sm"],
+["Neidenburg",      "Nidzica",                   "Polnisch",        53.360, 20.429, "ostpreussen", "sm"],
+["Osterode",        "Ostróda",                   "Polnisch",        53.702, 19.959, "ostpreussen", "sm"],
+["Marienburg",      "Malbork",                   "Polnisch",        54.034, 19.028, "ostpreussen", "md"],
+["Marienwerder",    "Kwidzyn",                   "Polnisch",        53.736, 18.929, "ostpreussen", "sm"],
+["Dirschau",        "Tczew",                     "Polnisch",        54.099, 18.783, "ostpreussen", "sm"],
+["Thorn",           "Toruń",                     "Polnisch",        53.013, 18.598, "ostpreussen", "md"],
+["Kulm",            "Chełmno",                   "Polnisch",        53.349, 18.427, "ostpreussen", "sm"],
+["Graudenz",        "Grudziądz",                 "Polnisch",        53.484, 18.754, "ostpreussen", "sm"],
+["Bromberg",        "Bydgoszcz",                 "Polnisch",        53.123, 17.999, "ostpreussen", "md"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  SCHLESIEN (Silesia → now Poland & Czech Republic)  ║
+// ╚══════════════════════════════════════════════════════╝
+["Breslau",         "Wrocław",                   "Polnisch",        51.107, 17.038, "schlesien", "lg"],
+["Stettin",         "Szczecin",                  "Polnisch",        53.429, 14.553, "schlesien", "lg"],
+["Gleiwitz",        "Gliwice",                   "Polnisch",        50.294, 18.670, "schlesien", "md"],
+["Kattowitz",       "Katowice",                  "Polnisch",        50.257, 19.028, "schlesien", "md"],
+["Oppeln",          "Opole",                     "Polnisch",        50.675, 17.921, "schlesien", "md"],
+["Beuthen",         "Bytom",                     "Polnisch",        50.348, 18.914, "schlesien", "md"],
+["Hindenburg",      "Zabrze",                    "Polnisch",        50.325, 18.786, "schlesien", "sm"],
+["Ratibor",         "Racibórz",                  "Polnisch",        50.091, 18.219, "schlesien", "md"],
+["Liegnitz",        "Legnica",                   "Polnisch",        51.207, 16.159, "schlesien", "md"],
+["Hirschberg",      "Jelenia Góra",               "Polnisch",        50.904, 15.727, "schlesien", "md"],
+["Görlitz",         "Zgorzelec",                 "Polnisch",        51.151, 14.970, "schlesien", "md"],
+["Schweidnitz",     "Świdnica",                  "Polnisch",        50.848, 16.488, "schlesien", "sm"],
+["Münsterberg",     "Ziębice",                   "Polnisch",        50.608, 17.049, "schlesien", "sm"],
+["Glatz",           "Kłodzko",                   "Polnisch",        50.438, 16.659, "schlesien", "sm"],
+["Neisse",          "Nysa",                      "Polnisch",        50.474, 17.333, "schlesien", "sm"],
+["Patschkau",       "Paczków",                   "Polnisch",        50.468, 17.003, "schlesien", "sm"],
+["Grottkau",        "Grodków",                   "Polnisch",        50.701, 17.383, "schlesien", "sm"],
+["Falkenberg",      "Niemodlin",                 "Polnisch",        50.638, 17.609, "schlesien", "sm"],
+["Cosel",           "Koźle",                     "Polnisch",        50.338, 18.159, "schlesien", "sm"],
+["Leobschütz",      "Głubczyce",                 "Polnisch",        50.203, 17.829, "schlesien", "sm"],
+["Neustadt",        "Prudnik",                   "Polnisch",        50.323, 17.577, "schlesien", "sm"],
+["Zülz",            "Biała",                     "Polnisch",        50.244, 17.666, "schlesien", "sm"],
+["Kreuzburg",       "Kluczbork",                 "Polnisch",        50.980, 18.213, "schlesien", "sm"],
+["Namslau",         "Namysłów",                  "Polnisch",        51.077, 17.718, "schlesien", "sm"],
+["Brieg",           "Brzeg",                     "Polnisch",        50.861, 17.471, "schlesien", "sm"],
+["Oels",            "Oleśnica",                  "Polnisch",        51.209, 17.381, "schlesien", "sm"],
+["Trebnitz",        "Trzebnica",                 "Polnisch",        51.307, 17.062, "schlesien", "sm"],
+["Wohlau",          "Wołów",                     "Polnisch",        51.339, 16.641, "schlesien", "sm"],
+["Glogau",          "Głogów",                    "Polnisch",        51.662, 16.085, "schlesien", "md"],
+["Sprottau",        "Szprotawa",                 "Polnisch",        51.566, 15.533, "schlesien", "sm"],
+["Sagan",           "Żagań",                     "Polnisch",        51.618, 15.316, "schlesien", "sm"],
+["Grünberg",        "Zielona Góra",              "Polnisch",        51.935, 15.506, "schlesien", "md"],
+["Bunzlau",         "Bolesławiec",               "Polnisch",        51.265, 15.558, "schlesien", "sm"],
+["Löwenberg",       "Lwówek Śląski",             "Polnisch",        51.108, 15.593, "schlesien", "sm"],
+["Goldberg",        "Złotoryja",                 "Polnisch",        51.125, 15.919, "schlesien", "sm"],
+["Jauer",           "Jawor",                     "Polnisch",        51.046, 16.200, "schlesien", "sm"],
+["Striegau",        "Strzegom",                  "Polnisch",        50.959, 16.353, "schlesien", "sm"],
+["Reichenbach",     "Dzierżoniów",               "Polnisch",        50.729, 16.651, "schlesien", "sm"],
+["Frankenstein",    "Ząbkowice Śląskie",          "Polnisch",        50.589, 16.813, "schlesien", "sm"],
+["Habelschwerdt",   "Bystrzyca Kłodzka",          "Polnisch",        50.302, 16.648, "schlesien", "sm"],
+["Troppau",         "Opava",                     "Tschechisch",     49.938, 17.904, "schlesien", "md"],
+["Jägerndorf",      "Krnov",                     "Tschechisch",     50.088, 17.706, "schlesien", "sm"],
+["Freudenthal",     "Bruntál",                   "Tschechisch",     49.988, 17.464, "schlesien", "sm"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  POMMERN (Pomerania → now Poland)                   ║
+// ╚══════════════════════════════════════════════════════╝
+["Kolberg",         "Kołobrzeg",                 "Polnisch",        54.175, 15.577, "pommern", "md"],
+["Köslin",          "Koszalin",                  "Polnisch",        54.194, 16.172, "pommern", "md"],
+["Stolp",           "Słupsk",                    "Polnisch",        54.464, 17.029, "pommern", "md"],
+["Lauenburg",       "Lębork",                    "Polnisch",        54.533, 17.749, "pommern", "sm"],
+["Bütow",           "Bytów",                     "Polnisch",        54.168, 17.494, "pommern", "sm"],
+["Schlawe",         "Sławno",                    "Polnisch",        54.363, 16.686, "pommern", "sm"],
+["Rügenwalde",      "Darłowo",                   "Polnisch",        54.423, 16.413, "pommern", "sm"],
+["Belgard",         "Białogard",                 "Polnisch",        54.000, 15.985, "pommern", "sm"],
+["Neustettin",      "Szczecinek",                "Polnisch",        53.711, 16.698, "pommern", "sm"],
+["Stargard",        "Stargard",                  "Polnisch",        53.336, 15.044, "pommern", "sm"],
+["Cammin",          "Kamień Pomorski",            "Polnisch",        53.972, 14.772, "pommern", "sm"],
+["Demmin",          "Demmin",                    "Deutsch",         53.906, 13.044, "pommern", "sm"],
+["Usedom",          "Usedom",                    "Deutsch",         53.865, 14.005, "pommern", "sm"],
+["Stralsund",       "Stralsund",                 "Deutsch",         54.310, 13.089, "pommern", "sm"],
+["Greifswald",      "Greifswald",                "Deutsch",         54.096, 13.387, "pommern", "sm"],
+["Stolpmünde",      "Ustka",                     "Polnisch",        54.581, 16.858, "pommern", "sm"],
+["Rügen",           "Rügen",                     "Deutsch",         54.440, 13.400, "pommern", "sm"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  POSEN (Poznań region → now Poland)                 ║
+// ╚══════════════════════════════════════════════════════╝
+["Posen",           "Poznań",                    "Polnisch",        52.407, 16.934, "posen", "lg"],
+["Gnesen",          "Gniezno",                   "Polnisch",        52.535, 17.598, "posen", "md"],
+["Lissa",           "Leszno",                    "Polnisch",        51.843, 16.575, "posen", "sm"],
+["Samter",          "Szamotuły",                 "Polnisch",        52.609, 16.583, "posen", "sm"],
+["Schrimm",         "Śrem",                      "Polnisch",        52.088, 17.015, "posen", "sm"],
+["Schroda",         "Środa Wielkopolska",         "Polnisch",        52.228, 17.276, "posen", "sm"],
+["Wreschen",        "Września",                  "Polnisch",        52.323, 17.568, "posen", "sm"],
+["Hohensalza",      "Inowrocław",                "Polnisch",        52.797, 18.254, "posen", "md"],
+["Gnesen",          "Gniezno",                   "Polnisch",        52.535, 17.598, "posen", "sm"],
+["Ostrowo",         "Ostrów Wielkopolski",        "Polnisch",        51.652, 17.808, "posen", "sm"],
+["Rawitsch",        "Rawicz",                    "Polnisch",        51.606, 16.859, "posen", "sm"],
+["Fraustadt",       "Wschowa",                   "Polnisch",        51.802, 16.313, "posen", "sm"],
+["Bomst",           "Babimost",                  "Polnisch",        52.182, 15.824, "posen", "sm"],
+["Meseritz",        "Międzyrzecz",               "Polnisch",        52.446, 15.584, "posen", "sm"],
+["Schwerin",        "Skwierzyna",                "Polnisch",        52.598, 15.503, "posen", "sm"],
+["Filehne",         "Wieleń",                    "Polnisch",        52.904, 16.154, "posen", "sm"],
+["Czarnikau",       "Czarnków",                  "Polnisch",        52.900, 16.568, "posen", "sm"],
+["Wongrowitz",      "Wągrowiec",                 "Polnisch",        52.803, 17.200, "posen", "sm"],
+["Koschmin",        "Koźmin Wielkopolski",        "Polnisch",        51.831, 17.458, "posen", "sm"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  SUDETENLAND (Bohemia/Moravia → now Czech Republic) ║
+// ╚══════════════════════════════════════════════════════╝
+["Reichenberg",     "Liberec",                   "Tschechisch",     50.770, 15.057, "sudetenland", "lg"],
+["Eger",            "Cheb",                      "Tschechisch",     50.081, 12.370, "sudetenland", "lg"],
+["Karlsbad",        "Karlovy Vary",              "Tschechisch",     50.232, 12.872, "sudetenland", "lg"],
+["Marienbad",       "Mariánské Lázně",            "Tschechisch",     49.966, 12.701, "sudetenland", "md"],
+["Franzensbad",     "Františkovy Lázně",          "Tschechisch",     50.121, 12.352, "sudetenland", "sm"],
+["Aussig",          "Ústí nad Labem",             "Tschechisch",     50.661, 14.054, "sudetenland", "md"],
+["Leitmeritz",      "Litoměřice",                "Tschechisch",     50.539, 14.130, "sudetenland", "md"],
+["Teplitz",         "Teplice",                   "Tschechisch",     50.658, 13.819, "sudetenland", "md"],
+["Brüx",            "Most",                      "Tschechisch",     50.503, 13.637, "sudetenland", "md"],
+["Komotau",         "Chomutov",                  "Tschechisch",     50.459, 13.418, "sudetenland", "md"],
+["Kaaden",          "Kadaň",                     "Tschechisch",     50.378, 13.272, "sudetenland", "sm"],
+["Saaz",            "Žatec",                     "Tschechisch",     50.327, 13.538, "sudetenland", "sm"],
+["Falkenau",        "Sokolov",                   "Tschechisch",     50.180, 12.636, "sudetenland", "sm"],
+["Asch",            "Aš",                        "Tschechisch",     50.226, 12.196, "sudetenland", "sm"],
+["Rumburg",         "Rumburk",                   "Tschechisch",     50.953, 14.559, "sudetenland", "sm"],
+["Schluckenau",     "Šluknov",                   "Tschechisch",     51.003, 14.452, "sudetenland", "sm"],
+["Warnsdorf",       "Varnsdorf",                 "Tschechisch",     50.912, 14.618, "sudetenland", "sm"],
+["Gabel",           "Jablonné v Podještědí",     "Tschechisch",     50.765, 14.749, "sudetenland", "sm"],
+["Friedland",       "Frýdlant",                  "Tschechisch",     50.920, 15.086, "sudetenland", "sm"],
+["Haida",           "Nový Bor",                  "Tschechisch",     50.760, 14.562, "sudetenland", "sm"],
+["Böhmisch Leipa",  "Česká Lípa",                "Tschechisch",     50.686, 14.538, "sudetenland", "sm"],
+["Jungbunzlau",     "Mladá Boleslav",             "Tschechisch",     50.415, 14.900, "sudetenland", "sm"],
+["Trautenau",       "Trutnov",                   "Tschechisch",     50.561, 15.912, "sudetenland", "sm"],
+["Hohenelbe",       "Vrchlabí",                  "Tschechisch",     50.626, 15.609, "sudetenland", "sm"],
+["Starkenbach",     "Jilemnice",                 "Tschechisch",     50.609, 15.506, "sudetenland", "sm"],
+["Braunau",         "Broumov",                   "Tschechisch",     50.587, 16.336, "sudetenland", "sm"],
+["Hronov",          "Hronov",                    "Tschechisch",     50.480, 16.182, "sudetenland", "sm"],
+["Mährisch Trübau", "Moravská Třebová",          "Tschechisch",     49.757, 16.663, "sudetenland", "sm"],
+["Mährisch Schönberg","Šumperk",                 "Tschechisch",     49.974, 16.970, "sudetenland", "sm"],
+["Sternberg",       "Šternberk",                 "Tschechisch",     49.730, 17.298, "sudetenland", "sm"],
+["Olmütz",          "Olomouc",                   "Tschechisch",     49.593, 17.251, "sudetenland", "lg"],
+["Brünn",           "Brno",                      "Tschechisch",     49.195, 16.608, "sudetenland", "lg"],
+["Iglau",           "Jihlava",                   "Tschechisch",     49.396, 15.591, "sudetenland", "md"],
+["Znaim",           "Znojmo",                    "Tschechisch",     48.856, 16.049, "sudetenland", "md"],
+["Nikolsburg",      "Mikulov",                   "Tschechisch",     48.805, 16.638, "sudetenland", "sm"],
+["Lundenburg",      "Břeclav",                   "Tschechisch",     48.757, 16.882, "sudetenland", "sm"],
+["Budweis",         "České Budějovice",           "Tschechisch",     48.975, 14.481, "sudetenland", "md"],
+["Krumau",          "Český Krumlov",             "Tschechisch",     48.813, 14.315, "sudetenland", "sm"],
+["Prachatitz",      "Prachatice",                "Tschechisch",     49.012, 14.000, "sudetenland", "sm"],
+["Neuern",          "Nýrsko",                    "Tschechisch",     49.299, 13.145, "sudetenland", "sm"],
+["Taus",            "Domažlice",                 "Tschechisch",     49.440, 12.929, "sudetenland", "sm"],
+["Bischofteinitz",  "Horšovský Týn",             "Tschechisch",     49.530, 12.936, "sudetenland", "sm"],
+["Pilsen",          "Plzeň",                     "Tschechisch",     49.738, 13.374, "sudetenland", "lg"],
+["Prag",            "Praha",                     "Tschechisch",     50.075, 14.438, "sudetenland", "lg"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  ELSASS & LOTHRINGEN (Alsace-Lorraine → France)     ║
+// ╚══════════════════════════════════════════════════════╝
+["Straßburg",       "Strasbourg",                "Französisch",     48.574,  7.752, "elsass", "lg"],
+["Kolmar",          "Colmar",                    "Französisch",     48.080,  7.360, "elsass", "lg"],
+["Mülhausen",       "Mulhouse",                  "Französisch",     47.750,  7.335, "elsass", "lg"],
+["Hagenau",         "Haguenau",                  "Französisch",     48.817,  7.790, "elsass", "md"],
+["Weißenburg",      "Wissembourg",               "Französisch",     49.037,  7.944, "elsass", "md"],
+["Schlettstadt",    "Sélestat",                  "Französisch",     48.259,  7.453, "elsass", "md"],
+["Gebweiler",       "Guebwiller",                "Französisch",     47.906,  7.210, "elsass", "sm"],
+["Thann",           "Thann",                     "Französisch",     47.810,  7.101, "elsass", "sm"],
+["Altkirch",        "Altkirch",                  "Französisch",     47.622,  7.241, "elsass", "sm"],
+["Breisach",        "Breisach am Rhein",         "Deutsch",         48.034,  7.578, "elsass", "sm"],
+["Neubreisach",     "Neuf-Brisach",              "Französisch",     48.018,  7.524, "elsass", "sm"],
+["Rappoltsweiler",  "Ribeauvillé",               "Französisch",     48.194,  7.323, "elsass", "sm"],
+["Ribeauvillé",     "Ribeauvillé",               "Französisch",     48.194,  7.323, "elsass", "sm"],
+["Rufach",          "Rouffach",                  "Französisch",     47.957,  7.299, "elsass", "sm"],
+["Münster",         "Munster",                   "Französisch",     48.040,  7.140, "elsass", "sm"],
+["Oberehnheim",     "Obernai",                   "Französisch",     48.460,  7.481, "elsass", "sm"],
+["Rosheim",         "Rosheim",                   "Französisch",     48.497,  7.469, "elsass", "sm"],
+["Molsheim",        "Molsheim",                  "Französisch",     48.538,  7.491, "elsass", "sm"],
+["Metz",            "Metz",                      "Französisch",     49.119,  6.177, "elsass", "lg"],
+["Diedenhofen",     "Thionville",                "Französisch",     49.357,  6.169, "elsass", "md"],
+["Saargemünd",      "Sarreguemines",             "Französisch",     49.111,  7.069, "elsass", "md"],
+["Saarburg",        "Sarrebourg",                "Französisch",     48.735,  7.055, "elsass", "sm"],
+["Château-Salins",  "Château-Salins",            "Französisch",     48.820,  6.516, "elsass", "sm"],
+["Bolchen",         "Boulay-Moselle",            "Französisch",     49.228,  6.502, "elsass", "sm"],
+["Forbach",         "Forbach",                   "Französisch",     49.188,  6.900, "elsass", "sm"],
+["Bitsch",          "Bitche",                    "Französisch",     49.051,  7.432, "elsass", "sm"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  SÜDTIROL (South Tyrol → Italy)                     ║
+// ╚══════════════════════════════════════════════════════╝
+["Bozen",           "Bolzano",                   "Italienisch",     46.498, 11.355, "suedtirol", "lg"],
+["Meran",           "Merano",                    "Italienisch",     46.670, 11.160, "suedtirol", "lg"],
+["Brixen",          "Bressanone",                "Italienisch",     46.716, 11.657, "suedtirol", "md"],
+["Sterzing",        "Vipiteno",                  "Italienisch",     46.893, 11.432, "suedtirol", "md"],
+["Bruneck",         "Brunico",                   "Italienisch",     46.796, 11.937, "suedtirol", "md"],
+["Klausen",         "Chiusa",                    "Italienisch",     46.641, 11.572, "suedtirol", "sm"],
+["Neumarkt",        "Egna",                      "Italienisch",     46.321, 11.276, "suedtirol", "sm"],
+["Tramin",          "Termeno",                   "Italienisch",     46.338, 11.237, "suedtirol", "sm"],
+["Kaltern",         "Caldaro",                   "Italienisch",     46.374, 11.242, "suedtirol", "sm"],
+["Eppan",           "Appiano",                   "Italienisch",     46.445, 11.267, "suedtirol", "sm"],
+["Lana",            "Lana",                      "Italienisch",     46.614, 11.153, "suedtirol", "sm"],
+["Naturns",         "Naturno",                   "Italienisch",     46.651, 11.010, "suedtirol", "sm"],
+["Schlanders",      "Silandro",                  "Italienisch",     46.629, 10.770, "suedtirol", "sm"],
+["Glurns",          "Glorenza",                  "Italienisch",     46.678, 10.556, "suedtirol", "sm"],
+["Mals",            "Malles Venosta",             "Italienisch",     46.694, 10.543, "suedtirol", "sm"],
+["Kastelbell",      "Castelbello",               "Italienisch",     46.645, 10.879, "suedtirol", "sm"],
+["Laas",            "Lasa",                      "Italienisch",     46.619, 10.697, "suedtirol", "sm"],
+["Toblach",         "Dobbiaco",                  "Italienisch",     46.724, 12.219, "suedtirol", "sm"],
+["Innichen",        "San Candido",               "Italienisch",     46.733, 12.281, "suedtirol", "sm"],
+["Welsberg",        "Monguelfo",                 "Italienisch",     46.761, 12.108, "suedtirol", "sm"],
+["Niederdorf",      "Villabassa",                "Italienisch",     46.741, 12.167, "suedtirol", "sm"],
+["Sand in Taufers", "Campo Tures",               "Italienisch",     46.917, 11.957, "suedtirol", "sm"],
+["Prettau",         "Predoi",                    "Italienisch",     47.057, 12.026, "suedtirol", "sm"],
+["Trient",          "Trento",                    "Italienisch",     46.070, 11.123, "suedtirol", "lg"],
+["Rovereit",        "Rovereto",                  "Italienisch",     45.891, 11.037, "suedtirol", "md"],
+["Riva",            "Riva del Garda",            "Italienisch",     45.888, 10.841, "suedtirol", "sm"],
+["Görz",            "Gorizia",                   "Italienisch",     45.942, 13.622, "suedtirol", "md"],
+["Triest",          "Trieste",                   "Italienisch",     45.649, 13.776, "suedtirol", "lg"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  BALTIKUM (Baltic States — historical German towns) ║
+// ╚══════════════════════════════════════════════════════╝
+["Reval",           "Tallinn",                   "Estnisch",        59.437, 24.754, "baltikum", "lg"],
+["Dorpat",          "Tartu",                     "Estnisch",        58.378, 26.729, "baltikum", "lg"],
+["Pernau",          "Pärnu",                     "Estnisch",        58.385, 24.499, "baltikum", "md"],
+["Narva",           "Narva",                     "Estnisch",        59.377, 28.177, "baltikum", "md"],
+["Arensburg",       "Kuressaare",                "Estnisch",        58.248, 22.503, "baltikum", "md"],
+["Hapsal",          "Haapsalu",                  "Estnisch",        58.944, 23.543, "baltikum", "sm"],
+["Weißenstein",     "Paide",                     "Estnisch",        58.889, 25.558, "baltikum", "sm"],
+["Fellin",          "Viljandi",                  "Estnisch",        58.364, 25.590, "baltikum", "sm"],
+["Wesenberg",       "Rakvere",                   "Estnisch",        59.346, 26.355, "baltikum", "sm"],
+["Riga",            "Rīga",                      "Lettisch",        56.946, 24.106, "baltikum", "lg"],
+["Mitau",           "Jelgava",                   "Lettisch",        56.651, 23.721, "baltikum", "md"],
+["Libau",           "Liepāja",                   "Lettisch",        56.505, 21.011, "baltikum", "md"],
+["Windau",          "Ventspils",                 "Lettisch",        57.394, 21.564, "baltikum", "sm"],
+["Goldingen",       "Kuldīga",                   "Lettisch",        56.969, 21.972, "baltikum", "sm"],
+["Wenden",          "Cēsis",                     "Lettisch",        57.312, 25.272, "baltikum", "sm"],
+["Walk",            "Valka / Valga",             "Lett./Estn.",     57.777, 26.029, "baltikum", "sm"],
+["Wolmar",          "Valmiera",                  "Lettisch",        57.537, 25.427, "baltikum", "sm"],
+["Dünaburg",        "Daugavpils",                "Lettisch",        55.874, 26.536, "baltikum", "md"],
+["Jakobstadt",      "Jēkabpils",                 "Lettisch",        56.499, 25.860, "baltikum", "sm"],
+["Wilna",           "Vilnius",                   "Litauisch",       54.687, 25.280, "baltikum", "lg"],
+["Kowno",           "Kaunas",                    "Litauisch",       54.898, 23.903, "baltikum", "lg"],
+["Schaulen",        "Šiauliai",                  "Litauisch",       55.934, 23.314, "baltikum", "md"],
+["Polangen",        "Palanga",                   "Litauisch",       55.920, 21.068, "baltikum", "sm"],
+["Rossitten",       "Rybachy",                   "Russisch",        55.152, 20.856, "baltikum", "sm"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  SIEBENBÜRGEN (Transylvania → Romania)              ║
+// ╚══════════════════════════════════════════════════════╝
+["Hermannstadt",    "Sibiu",                     "Rumänisch",       45.798, 24.152, "siebenb", "lg"],
+["Kronstadt",       "Brașov",                    "Rumänisch",       45.643, 25.589, "siebenb", "lg"],
+["Klausenburg",     "Cluj-Napoca",               "Rumänisch",       46.770, 23.590, "siebenb", "lg"],
+["Schäßburg",       "Sighișoara",                "Rumänisch",       46.218, 24.791, "siebenb", "md"],
+["Mediasch",        "Mediaș",                    "Rumänisch",       46.158, 24.352, "siebenb", "md"],
+["Bistritz",        "Bistrița",                  "Rumänisch",       47.133, 24.500, "siebenb", "md"],
+["Reschitz",        "Reșița",                    "Rumänisch",       45.295, 21.888, "siebenb", "sm"],
+["Mühlbach",        "Sebeș",                     "Rumänisch",       45.963, 23.566, "siebenb", "sm"],
+["Broos",           "Orăștie",                   "Rumänisch",       45.837, 23.205, "siebenb", "sm"],
+["Leschkirch",      "Nocrich",                   "Rumänisch",       45.837, 24.399, "siebenb", "sm"],
+["Heltau",          "Cisnădie",                  "Rumänisch",       45.710, 24.151, "siebenb", "sm"],
+["Großau",          "Cristian",                  "Rumänisch",       45.771, 24.029, "siebenb", "sm"],
+["Neppendorf",      "Turnișor",                  "Rumänisch",       45.820, 24.078, "siebenb", "sm"],
+["Birthälm",        "Biertan",                   "Rumänisch",       46.100, 24.520, "siebenb", "sm"],
+["Marktschelken",   "Șeica Mare",                "Rumänisch",       46.021, 24.131, "siebenb", "sm"],
+["Reußmarkt",       "Miercurea Sibiului",         "Rumänisch",       45.888, 23.793, "siebenb", "sm"],
+["Fogarasch",       "Făgăraș",                   "Rumänisch",       45.841, 24.973, "siebenb", "sm"],
+["Rosenau",         "Râșnov",                    "Rumänisch",       45.590, 25.456, "siebenb", "sm"],
+["Zeiden",          "Codlea",                    "Rumänisch",       45.703, 25.444, "siebenb", "sm"],
+["Heldsdorf",       "Hălchiu",                   "Rumänisch",       45.748, 25.554, "siebenb", "sm"],
+["Nußbach",         "Nușfalău",                  "Rumänisch",       47.163, 22.839, "siebenb", "sm"],
+["Biala",           "Baia Mare",                 "Rumänisch",       47.657, 23.568, "siebenb", "md"],
+["Sathmar",         "Satu Mare",                 "Rumänisch",       47.793, 22.886, "siebenb", "md"],
+["Großwardein",     "Oradea",                    "Rumänisch",       47.049, 21.918, "siebenb", "md"],
+["Temeswar",        "Timișoara",                 "Rumänisch",       45.747, 21.227, "siebenb", "lg"],
+["Lugosch",         "Lugoj",                     "Rumänisch",       45.688, 21.904, "siebenb", "sm"],
+["Arad",            "Arad",                      "Rumänisch",       46.187, 21.312, "siebenb", "md"],
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  WELT – Countries & major cities (global exonyms)   ║
+// ╚══════════════════════════════════════════════════════╝
+// Europe countries
+["Albanien",        "Shqipëria",                 "Albanisch",       41.15,  20.17, "world", "md"],
+["Belgien",         "België / Belgique",          "Ndl./Frz.",       50.85,   4.35, "world", "md"],
+["Bulgarien",       "България",                  "Bulgarisch",      42.73,  25.48, "world", "md"],
+["Dänemark",        "Danmark",                   "Dänisch",         56.26,   9.50, "world", "md"],
+["Finnland",        "Suomi",                     "Finnisch",        64.00,  26.00, "world", "md"],
+["Frankreich",      "France",                    "Französisch",     46.23,   2.21, "world", "lg"],
+["Griechenland",    "Ελλάδα",                    "Griechisch",      39.07,  21.82, "world", "md"],
+["Irland",          "Éire",                      "Irisch",          53.41,  -8.24, "world", "md"],
+["Island",          "Ísland",                    "Isländisch",      64.96, -19.02, "world", "md"],
+["Italien",         "Italia",                    "Italienisch",     41.87,  12.57, "world", "lg"],
+["Kroatien",        "Hrvatska",                  "Kroatisch",       45.10,  15.20, "world", "md"],
+["Lettland",        "Latvija",                   "Lettisch",        56.88,  24.60, "world", "md"],
+["Litauen",         "Lietuva",                   "Litauisch",       55.17,  23.88, "world", "md"],
+["Niederlande",     "Nederland",                 "Niederländisch",  52.13,   5.29, "world", "md"],
+["Norwegen",        "Norge",                     "Norwegisch",      60.47,   8.47, "world", "md"],
+["Polen",           "Polska",                    "Polnisch",        51.92,  19.15, "world", "lg"],
+["Portugal",        "Portugal",                  "Portugiesisch",   39.40,  -8.22, "world", "md"],
+["Rumänien",        "România",                   "Rumänisch",       45.94,  24.97, "world", "md"],
+["Russland",        "Россия",                    "Russisch",        61.52, 105.31, "world", "lg"],
+["Schweden",        "Sverige",                   "Schwedisch",      60.13,  18.64, "world", "md"],
+["Schweiz",         "Schweiz / Suisse",           "De./Fr./It.",     46.82,   8.23, "world", "md"],
+["Serbien",         "Srbija",                    "Serbisch",        44.02,  21.01, "world", "md"],
+["Slowakei",        "Slovensko",                 "Slowakisch",      48.67,  19.70, "world", "md"],
+["Slowenien",       "Slovenija",                 "Slowenisch",      46.15,  14.99, "world", "md"],
+["Spanien",         "España",                    "Spanisch",        40.46,  -3.75, "world", "lg"],
+["Tschechien",      "Česko",                     "Tschechisch",     49.82,  15.47, "world", "md"],
+["Türkei",          "Türkiye",                   "Türkisch",        38.96,  35.24, "world", "lg"],
+["Ukraine",         "Україна",                   "Ukrainisch",      48.38,  31.16, "world", "lg"],
+["Ungarn",          "Magyarország",              "Ungarisch",       47.16,  19.50, "world", "md"],
+["Weißrussland",    "Беларусь",                  "Belarussisch",    53.71,  27.97, "world", "md"],
+// European cities
+["Athen",           "Αθήνα",                     "Griechisch",      37.98,  23.73, "world", "md"],
+["Brüssel",         "Brussel / Bruxelles",        "Ndl./Frz.",       50.85,   4.35, "world", "md"],
+["Bukarest",        "București",                 "Rumänisch",       44.43,  26.10, "world", "md"],
+["Florenz",         "Firenze",                   "Italienisch",     43.77,  11.26, "world", "md"],
+["Genf",            "Genève",                    "Französisch",     46.20,   6.15, "world", "md"],
+["Kiew",            "Київ",                      "Ukrainisch",      50.45,  30.52, "world", "md"],
+["Kopenhagen",      "København",                 "Dänisch",         55.68,  12.57, "world", "md"],
+["Lissabon",        "Lisboa",                    "Portugiesisch",   38.72,  -9.14, "world", "md"],
+["London",          "London",                    "Englisch",        51.51,  -0.13, "world", "lg"],
+["Mailand",         "Milano",                    "Italienisch",     45.46,   9.19, "world", "md"],
+["Moskau",          "Москва",                    "Russisch",        55.75,  37.62, "world", "lg"],
+["Neapel",          "Napoli",                    "Italienisch",     40.85,  14.27, "world", "md"],
+["Prag",            "Praha",                     "Tschechisch",     50.08,  14.44, "world", "lg"],
+["Rom",             "Roma",                      "Italienisch",     41.90,  12.50, "world", "lg"],
+["Venedig",         "Venezia",                   "Italienisch",     45.44,  12.33, "world", "md"],
+["Warschau",        "Warszawa",                  "Polnisch",        52.23,  21.01, "world", "lg"],
+["Lemberg",         "Lviv",                      "Ukrainisch",      49.84,  24.03, "world", "md"],
+["Krakau",          "Kraków",                    "Polnisch",        50.06,  19.94, "world", "md"],
+["Lüttich",         "Liège",                     "Französisch",     50.63,   5.57, "world", "sm"],
+["Genua",           "Genova",                    "Italienisch",     44.41,   8.93, "world", "md"],
+["Mailand",         "Milano",                    "Italienisch",     45.46,   9.19, "world", "md"],
+["Palermo",         "Palermo",                   "Italienisch",     38.11,  13.36, "world", "md"],
+["Belgrad",         "Beograd",                   "Serbisch",        44.82,  20.46, "world", "md"],
+["Warschau",        "Warszawa",                  "Polnisch",        52.23,  21.01, "world", "lg"],
+["Sarajevo",        "Sarajevo",                  "Bosnisch",        43.85,  18.36, "world", "md"],
+["Laibach",         "Ljubljana",                 "Slowenisch",      46.05,  14.51, "world", "md"],
+["Pressburg",       "Bratislava",                "Slowakisch",      48.15,  17.11, "world", "md"],
+["Agram",           "Zagreb",                    "Kroatisch",       45.81,  15.98, "world", "md"],
+["Konstantinopel",  "İstanbul",                  "Türkisch",        41.01,  28.95, "world", "lg"],
+["Smyrna",          "İzmir",                     "Türkisch",        38.42,  27.14, "world", "md"],
+["Thessaloniki",    "Θεσσαλονίκη",               "Griechisch",      40.64,  22.94, "world", "md"],
+// World
+["Ägypten",         "مصر",                       "Arabisch",        26.82,  30.80, "world", "md"],
+["Äthiopien",       "ኢትዮጵያ",                    "Amharisch",        9.15,  40.49, "world", "md"],
+["Brasilien",       "Brasil",                    "Portugiesisch",  -14.24, -51.93, "world", "lg"],
+["China",           "中国",                       "Mandarin",        35.86, 104.20, "world", "lg"],
+["Grönland",        "Kalaallit Nunaat",           "Grönländisch",    72.00, -40.00, "world", "md"],
+["Indien",          "भारत",                       "Hindi",           20.59,  78.96, "world", "lg"],
+["Japan",           "日本",                       "Japanisch",       36.20, 138.25, "world", "lg"],
+["Kairo",           "القاهرة",                   "Arabisch",        30.04,  31.24, "world", "md"],
+["Marokko",         "المغرب",                    "Arabisch",        31.79,  -7.09, "world", "md"],
+["Mexiko",          "México",                    "Spanisch",        19.43, -99.13, "world", "md"],
+["Nordkorea",       "조선민주주의인민공화국",      "Koreanisch",      40.34, 127.51, "world", "md"],
+["Peking",          "北京",                       "Mandarin",        39.91, 116.39, "world", "md"],
+["Persien",         "ایران",                     "Persisch",        32.43,  53.69, "world", "md"],
+["Südkorea",        "대한민국",                   "Koreanisch",      35.91, 127.77, "world", "md"],
+["Tokio",           "東京",                       "Japanisch",       35.69, 139.69, "world", "md"],
+["Vereinigte Staaten","United States",            "Englisch",        37.09, -95.71, "world", "lg"],
+["Australien",      "Australia",                 "Englisch",       -25.27, 133.78, "world", "lg"],
+["Neuseeland",      "New Zealand",               "Englisch",       -40.90, 174.89, "world", "md"],
+["Nordsee",         "North Sea",                 "Englisch",        57.00,   3.00, "world", "sm"],
+["Ostsee",          "Baltic Sea",                "Englisch",        58.50,  19.50, "world", "sm"],
+["Mittelmeer",      "Mediterranean Sea",         "Englisch",        35.00,  18.00, "world", "sm"],
+["Schwarzes Meer",  "Black Sea",                 "Englisch",        43.00,  34.00, "world", "sm"],
+];
+
+// ── Map init ───────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [51, 18],
+  zoom: 5,
+  minZoom: 2,
+  maxZoom: 12,
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 19,
+}).addTo(map);
+
+const regionLabels = {
+  ostpreussen: "Ostpreußen",
+  schlesien:   "Schlesien",
+  pommern:     "Pommern",
+  posen:       "Posen",
+  sudetenland: "Sudetenland",
+  elsass:      "Elsass / Lothringen",
+  suedtirol:   "Südtirol / Trentino",
+  baltikum:    "Baltikum",
+  siebenb:     "Siebenbürgen",
+  world:       "Welt",
+};
+
+// ── Build markers ──────────────────────────────────────────────────────────
+const layerGroups = {};
+Object.keys(regionLabels).forEach(r => { layerGroups[r] = L.layerGroup(); });
+
+const allMarkers = [];
+
+places.forEach(([de, local, lang, lat, lng, region, size]) => {
+  const icon = L.divIcon({
+    className: `exonym-label sz-${size} r-${region}`,
+    html: `<div class="inner">${de}</div>`,
+    iconAnchor: [0, 6],
+  });
+  const m = L.marker([lat, lng], { icon });
+  m.bindPopup(`
+    <div class="popup-body">
+      <div class="region-tag">${regionLabels[region] || region}</div>
+      <div class="de">${de}</div>
+      <div class="arrow">↓ heutiger Name</div>
+      <div class="local">${local}</div>
+      <div class="lang">${lang}</div>
+    </div>
+  `, { maxWidth: 280 });
+  layerGroups[region].addLayer(m);
+  allMarkers.push({ marker: m, region });
+});
+
+// Add all to map by default
+Object.values(layerGroups).forEach(lg => lg.addTo(map));
+
+// ── Count badge ────────────────────────────────────────────────────────────
+function updateCount(active) {
+  const n = active === 'all'
+    ? places.length
+    : places.filter(p => p[5] === active).length;
+  document.getElementById('count-badge').textContent = `${n} Orte`;
+}
+updateCount('all');
+
+// ── Filter buttons ─────────────────────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const region = btn.dataset.region;
+    Object.entries(layerGroups).forEach(([r, lg]) => {
+      if (region === 'all' || r === region) {
+        if (!map.hasLayer(lg)) map.addLayer(lg);
+      } else {
+        if (map.hasLayer(lg)) map.removeLayer(lg);
+      }
+    });
+    updateCount(region);
+    // Zoom to region
+    const zoomTargets = {
+      ostpreussen: [[53.0,18.0],[55.5,22.5]],
+      schlesien:   [[49.8,14.5],[52.0,18.5]],
+      pommern:     [[53.3,13.0],[55.0,18.5]],
+      posen:       [[51.5,15.0],[53.5,18.5]],
+      sudetenland: [[48.5,12.0],[51.0,18.0]],
+      elsass:      [[47.5, 6.0],[49.5, 8.0]],
+      suedtirol:   [[45.5,10.5],[47.0,14.0]],
+      baltikum:    [[54.5,21.0],[59.7,28.5]],
+      siebenb:     [[44.5,20.5],[48.0,26.5]],
+    };
+    if (zoomTargets[region]) {
+      map.fitBounds(zoomTargets[region], { padding: [30, 30] });
+    } else if (region === 'all') {
+      map.setView([51, 18], 5);
+    } else {
+      map.setView([30, 15], 3);
+    }
+  });
+});
+</script>
+</body>
+</html>
